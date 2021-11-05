@@ -1,7 +1,7 @@
 # Go SDK for Call2FA
 
 This is a library you can use for Rikkicom's service named as Call2FA 
-(a call as the second factor in an authorization pipeline).
+(a phone call as the second factor in an authorization pipeline).
 
 ## Installation
 
