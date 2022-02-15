@@ -35,7 +35,7 @@ type ApiPoolCallResponse struct {
 }
 
 type ApiCallStatusResponse struct {
-	ID             int    `json:"id"`
+	ID             string `json:"id"`
 	State          string `json:"state"`
 	PhoneNumber    string `json:"phone_number"`
 	CallbackUrl    string `json:"callback_url"`
