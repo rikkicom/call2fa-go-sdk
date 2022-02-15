@@ -20,8 +20,8 @@ type ApiCallParams struct {
 
 type ApiDictateCodeCallParams struct {
 	PhoneNumber string `json:"phone_number"`
-	Code string `json:"code"`
-	Lang string `json:"lang"`
+	Code        string `json:"code"`
+	Lang        string `json:"lang"`
 }
 
 type ApiCallResponse struct {

@@ -2,12 +2,16 @@ package call2fa_go_sdk
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
+	"sync"
+	"time"
 
+	"github.com/cristalhq/jwt/v4"
 	"github.com/parnurzeal/gorequest"
 )
+
+const baseUrl = "https://api-call2fa-v2.rikkicom.io"
 
 // Config contains API credentials
 type Config struct {
@@ -18,33 +22,35 @@ type Config struct {
 }
 
 // NewClient creates a new Client instance
-func NewClient(cfg Config) (*Client, error) {
+func NewClient(cfg *Config) *Client {
 	// Init the client
-	c := &Client{
+	return &Client{
+		baseURL: baseUrl,
 		cfg:     cfg,
-		baseURL: "https://api-call2fa-v2.rikkicom.io",
 	}
-
-	// Get the JSON Web Token
-	jwt, err := c.ReceiveJWT()
-	if err != nil {
-		return nil, err
-	}
-	c.jwt = jwt
-
-	return c, nil
 }
 
 // Client is the structure of the client
 type Client struct {
-	cfg     Config
+	cfg     *Config
 	baseURL string
-	jwt     string
+	mu      sync.Mutex
+
+	// jwtClaims holds unmarshalled JWT token
+	jwtClaims *jwt.RegisteredClaims
+	// jwtToken holds raw JWT
+	jwtToken *jwt.Token
 }
 
 // Call sends the request to call via the standard type "press 1 to authorize"
-func (c Client) Call(phoneNumber, callbackURL string) (ApiCallResponse, error) {
-	var r ApiCallResponse
+func (c *Client) Call(phoneNumber, callbackURL string) (*ApiCallResponse, error) {
+	// validate JWT token
+	err := c.receiveJWT()
+	if err != nil {
+		return nil, err
+	}
+
+	var r *ApiCallResponse
 
 	request := gorequest.New()
 
@@ -58,18 +64,18 @@ func (c Client) Call(phoneNumber, callbackURL string) (ApiCallResponse, error) {
 	}
 	jsonBytes, err := json.Marshal(params)
 	if err != nil {
-		return r, err
+		return nil, err
 	}
 
 	// Do the request
 	resp, body, errs := request.Post(url).
 		Send(string(jsonBytes)).
-		AppendHeader("Authorization", fmt.Sprintf("Bearer %s", c.jwt)).
+		AppendHeader("Authorization", fmt.Sprintf("Bearer %s", c.jwtToken.String())).
 		EndBytes()
 
 	// Fail if there are any errors
 	if len(errs) > 0 {
-		return r, errors.New(fmt.Sprintf("Something went wrong, number of errors: %d", len(errs)))
+		return r, fmt.Errorf("something went wrong, number of errors: %d", len(errs))
 	}
 
 	// Check the response
@@ -82,13 +88,19 @@ func (c Client) Call(phoneNumber, callbackURL string) (ApiCallResponse, error) {
 
 		return r, nil
 	} else {
-		return r, errors.New(fmt.Sprintf("Incorrect status code: %d on call step", resp.StatusCode))
+		return r, fmt.Errorf("incorrect status code: %d on call step", resp.StatusCode)
 	}
 }
 
 // PoolCall sends the request to call in a pool
-func (c Client) PoolCall(phoneNumber, poolID string) (ApiPoolCallResponse, error) {
-	var r ApiPoolCallResponse
+func (c *Client) PoolCall(phoneNumber, poolID string) (*ApiPoolCallResponse, error) {
+	// validate JWT token
+	err := c.receiveJWT()
+	if err != nil {
+		return nil, err
+	}
+
+	var r *ApiPoolCallResponse
 
 	request := gorequest.New()
 
@@ -107,12 +119,12 @@ func (c Client) PoolCall(phoneNumber, poolID string) (ApiPoolCallResponse, error
 	// Do the request
 	resp, body, errs := request.Post(url).
 		Send(string(jsonBytes)).
-		AppendHeader("Authorization", fmt.Sprintf("Bearer %s", c.jwt)).
+		AppendHeader("Authorization", fmt.Sprintf("Bearer %s", c.jwtToken.String())).
 		EndBytes()
 
 	// Fail if there are any errors
 	if len(errs) > 0 {
-		return r, errors.New(fmt.Sprintf("Something went wrong, number of errors: %d", len(errs)))
+		return r, fmt.Errorf("something went wrong, number of errors: %d", len(errs))
 	}
 
 	// Check the response
@@ -125,13 +137,20 @@ func (c Client) PoolCall(phoneNumber, poolID string) (ApiPoolCallResponse, error
 
 		return r, nil
 	} else {
-		return r, errors.New(fmt.Sprintf("Incorrect status code: %d on call step", resp.StatusCode))
+		return r, fmt.Errorf("incorrect status code: %d on call step", resp.StatusCode)
 	}
 }
 
 // DictateCodeCall sends the request to call and pronounce a code in the chosen language
-func (c Client) DictateCodeCall(phoneNumber, code, lang string) (ApiCallResponse, error) {
-	var r ApiCallResponse
+func (c *Client) DictateCodeCall(phoneNumber, code, lang string) (*ApiCallResponse, error) {
+	if !c.validateJWT() {
+		err := c.receiveJWT()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var r *ApiCallResponse
 
 	request := gorequest.New()
 
@@ -152,12 +171,12 @@ func (c Client) DictateCodeCall(phoneNumber, code, lang string) (ApiCallResponse
 	// Do the request
 	resp, body, errs := request.Post(url).
 		Send(string(jsonBytes)).
-		AppendHeader("Authorization", fmt.Sprintf("Bearer %s", c.jwt)).
+		AppendHeader("Authorization", fmt.Sprintf("Bearer %s", c.jwtToken.String())).
 		EndBytes()
 
 	// Fail if there are any errors
 	if len(errs) > 0 {
-		return r, errors.New(fmt.Sprintf("Something went wrong, number of errors: %d", len(errs)))
+		return r, fmt.Errorf("something went wrong, number of errors: %d", len(errs))
 	}
 
 	// Check the response
@@ -170,12 +189,26 @@ func (c Client) DictateCodeCall(phoneNumber, code, lang string) (ApiCallResponse
 
 		return r, nil
 	} else {
-		return r, errors.New(fmt.Sprintf("Incorrect status code: %d on call step", resp.StatusCode))
+		return r, fmt.Errorf("incorrect status code: %d on call step", resp.StatusCode)
 	}
 }
 
-// ReceiveJWT sends the request to the authorization endpoint and returns received JWT
-func (c Client) ReceiveJWT() (string, error) {
+// validateJWT returns true if JWT token is valid
+func (c *Client) validateJWT() bool {
+	// return true if JWT token will be valid in next 5 minutes
+	if c.jwtClaims != nil && c.jwtClaims.IsValidExpiresAt(time.Now().Add(5*time.Minute)) {
+		return true
+	}
+
+	return false
+}
+
+// receiveJWT sends the request to the authorization endpoint and returns received JWT
+func (c *Client) receiveJWT() error {
+	// mutex to prevent multiple authentication requests
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	request := gorequest.New()
 
 	// Form the URL for the authorization
@@ -188,7 +221,7 @@ func (c Client) ReceiveJWT() (string, error) {
 	}
 	jsonBytes, err := json.Marshal(params)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	// Do the request
@@ -198,7 +231,7 @@ func (c Client) ReceiveJWT() (string, error) {
 
 	// Fail if there are any errors
 	if len(errs) > 0 {
-		return "", errors.New(fmt.Sprintf("Something went wrong, number of errors: %d", len(errs)))
+		return fmt.Errorf("something went wrong, number of errors: %d", len(errs))
 	}
 
 	// Check the response
@@ -207,11 +240,21 @@ func (c Client) ReceiveJWT() (string, error) {
 		var r ApiAuthResponse
 		err = json.Unmarshal(body, &r)
 		if err != nil {
-			return "", err
+			return err
 		}
 
-		return r.JWT, nil
+		c.jwtToken, err = jwt.ParseNoVerify([]byte(r.JWT))
+		if err != nil {
+			return fmt.Errorf("failed to parse jwt token: %w", err)
+		}
+
+		err = json.Unmarshal(c.jwtToken.Claims(), &c.jwtClaims)
+		if err != nil {
+			return fmt.Errorf("failed to decode jwt token: %w", err)
+		}
+
+		return nil
 	} else {
-		return "", errors.New(fmt.Sprintf("Incorrect status code: %d on authorization step", resp.StatusCode))
+		return fmt.Errorf("incorrect status code: %d on authorization step", resp.StatusCode)
 	}
 }

@@ -12,23 +12,20 @@ func main() {
 	_ = os.Setenv("GOREQUEST_DEBUG", "1")
 
 	// Configure the client
-	cfg := call2faSDK.Config{
+	cfg := &call2faSDK.Config{
 		Login:    "****",
 		Password: "****",
 	}
 
 	// Create the Call2FA client
-	c, err := call2faSDK.NewClient(cfg)
-	if err != nil {
-		panic(err)
-	}
+	client := call2faSDK.NewClient(cfg)
 
 	// Configure variables
 	phoneNumber := "+380631010121"
 	callbackURL := "https://httpbin.org/post"
 
 	// Do the request to start the call
-	response, err := c.Call(phoneNumber, callbackURL)
+	response, err := client.Call(phoneNumber, callbackURL)
 	if err != nil {
 		panic(err)
 	}
