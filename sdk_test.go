@@ -130,3 +130,41 @@ func TestClient_PoolCall(t *testing.T) {
 		})
 	}
 }
+
+func TestClient_CallStatus(t *testing.T) {
+	type fields struct {
+		client *Client
+	}
+	type args struct {
+		callID string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    *ApiCallStatusResponse
+		wantErr bool
+	}{
+		{
+			name: "Test CallStatus",
+			fields: fields{
+				client: newTestClient(),
+			},
+			args: args{
+				callID: "7119802",
+			},
+			want:    nil,
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newTestClient()
+			_, err := c.CallStatus(tt.args.callID)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("CallStatus() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+		})
+	}
+}

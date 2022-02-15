@@ -45,9 +45,11 @@ type Client struct {
 // Call sends the request to call via the standard type "press 1 to authorize"
 func (c *Client) Call(phoneNumber, callbackURL string) (*ApiCallResponse, error) {
 	// validate JWT token
-	err := c.receiveJWT()
-	if err != nil {
-		return nil, err
+	if !c.validateJWT() {
+		err := c.receiveJWT()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var r *ApiCallResponse
@@ -95,9 +97,11 @@ func (c *Client) Call(phoneNumber, callbackURL string) (*ApiCallResponse, error)
 // PoolCall sends the request to call in a pool
 func (c *Client) PoolCall(phoneNumber, poolID string) (*ApiPoolCallResponse, error) {
 	// validate JWT token
-	err := c.receiveJWT()
-	if err != nil {
-		return nil, err
+	if !c.validateJWT() {
+		err := c.receiveJWT()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var r *ApiPoolCallResponse
@@ -143,6 +147,7 @@ func (c *Client) PoolCall(phoneNumber, poolID string) (*ApiPoolCallResponse, err
 
 // DictateCodeCall sends the request to call and pronounce a code in the chosen language
 func (c *Client) DictateCodeCall(phoneNumber, code, lang string) (*ApiCallResponse, error) {
+	// validate JWT token
 	if !c.validateJWT() {
 		err := c.receiveJWT()
 		if err != nil {
@@ -190,6 +195,47 @@ func (c *Client) DictateCodeCall(phoneNumber, code, lang string) (*ApiCallRespon
 		return r, nil
 	} else {
 		return r, fmt.Errorf("incorrect status code: %d on call step", resp.StatusCode)
+	}
+}
+
+// CallStatus returns *ApiCallStatusResponse that contains information about call status
+func (c *Client) CallStatus(callID string) (*ApiCallStatusResponse, error) {
+	// validate JWT token
+	if !c.validateJWT() {
+		err := c.receiveJWT()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var r *ApiCallStatusResponse
+
+	request := gorequest.New()
+
+	// Form the URL for the call
+	url := fmt.Sprintf("%s/v1/call/%s/", c.baseURL, callID)
+
+	// Do the request
+	resp, body, errs := request.Get(url).
+		AppendHeader("Authorization", fmt.Sprintf("Bearer %s", c.jwtToken.String())).
+		EndBytes()
+
+	// Fail if there are any errors
+	if len(errs) > 0 {
+		return r, fmt.Errorf("something went wrong, number of errors: %d", len(errs))
+	}
+
+	// Check the response
+	if resp.StatusCode == http.StatusOK {
+		// Decode the response
+		err := json.Unmarshal(body, &r)
+		if err != nil {
+			return r, err
+		}
+
+		return r, nil
+	} else {
+		return r, fmt.Errorf("incorrect status code: %d on call status step", resp.StatusCode)
 	}
 }
 
