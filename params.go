@@ -45,13 +45,13 @@ type ApiCallStatusResponse struct {
 	IsError        bool   `json:"is_error"`
 	ErrorInfo      string `json:"error_info"`
 	CreatedAt      string `json:"created_at"`
-	CreatedAtUnix  int    `json:"created_at_unix"`
+	CreatedAtUnix  int64  `json:"created_at_unix"`
 	FinishedAt     string `json:"finished_at"`
-	FinishedAtUnix int    `json:"finished_at_unix"`
+	FinishedAtUnix int64  `json:"finished_at_unix"`
 	CalledAt       string `json:"called_at"`
-	CalledAtUnix   int    `json:"called_at_unix"`
+	CalledAtUnix   int64  `json:"called_at_unix"`
 	AnswerAt       string `json:"answer_at"`
-	AnswerAtUnix   int    `json:"answer_at_unix"`
+	AnswerAtUnix   int64  `json:"answer_at_unix"`
 	RegionCode     string `json:"region_code"`
 	PhoneNumberRaw string `json:"phone_number_raw"`
 }
